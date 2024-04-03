@@ -61,9 +61,9 @@ func main() {
 
 	mux.Handle("/app/*", config.middlewareMetricsInc(baseHandler))
 
-	mux.HandleFunc("GET /healthz", healthHandler)
-	mux.HandleFunc("GET /metrics", config.metricsHandler)
-	mux.HandleFunc("GET /reset", config.resetHandler)
+	mux.HandleFunc("GET /api/healthz", healthHandler)
+	mux.HandleFunc("GET /api/metrics", config.metricsHandler)
+	mux.HandleFunc("GET /api/reset", config.resetHandler)
 
 	corsMux := middlewareCors(mux)
 	server := &http.Server{Addr: ":" + port, Handler: corsMux}
