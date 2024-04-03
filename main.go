@@ -1,6 +1,9 @@
 package main
 
-import "net/http"
+import (
+	"log"
+	"net/http"
+)
 
 func middlewareCors(next http.Handler) http.Handler {
 	// Needed for validation
@@ -16,10 +19,21 @@ func middlewareCors(next http.Handler) http.Handler {
 	})
 }
 
+func healthHandler(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(200)
+	w.Write([]byte("OK"))
+}
+
 func main() {
+	const filepathRoot = "."
+	const port = "8080"
+
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir(".")))
+	mux.HandleFunc("/healthz", healthHandler)
+	mux.Handle("/app/*", http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot))))
+
 	corsMux := middlewareCors(mux)
-	server := &http.Server{Addr: "localhost:8080", Handler: corsMux}
-	server.ListenAndServe()
+	server := &http.Server{Addr: ":" + port, Handler: corsMux}
+	log.Fatal(server.ListenAndServe())
 }
