@@ -38,9 +38,16 @@ func (self *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 }
 
 func (self *apiConfig) metricsHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("Hits: %d", self.fileserverHits)))
+	w.Write([]byte(fmt.Sprintf(`<html>
+
+    <body>
+        <h1>Welcome, Chirpy Admin</h1>
+        <p>Chirpy has been visited %d times!</p>
+    </body>
+
+</html>`, self.fileserverHits)))
 }
 
 func (self *apiConfig) resetHandler(w http.ResponseWriter, _ *http.Request) {
@@ -62,8 +69,9 @@ func main() {
 	mux.Handle("/app/*", config.middlewareMetricsInc(baseHandler))
 
 	mux.HandleFunc("GET /api/healthz", healthHandler)
-	mux.HandleFunc("GET /api/metrics", config.metricsHandler)
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
+
+	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)
 
 	corsMux := middlewareCors(mux)
 	server := &http.Server{Addr: ":" + port, Handler: corsMux}
