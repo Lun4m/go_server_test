@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	// "fmt"
 	"log"
 	"net/http"
 )
@@ -20,43 +20,6 @@ func middlewareCors(next http.Handler) http.Handler {
 	})
 }
 
-func healthHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
-}
-
-type apiConfig struct {
-	fileserverHits int
-}
-
-func (self *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		self.fileserverHits++
-		next.ServeHTTP(w, r)
-	})
-}
-
-func (self *apiConfig) metricsHandler(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf(`<html>
-
-    <body>
-        <h1>Welcome, Chirpy Admin</h1>
-        <p>Chirpy has been visited %d times!</p>
-    </body>
-
-</html>`, self.fileserverHits)))
-}
-
-func (self *apiConfig) resetHandler(w http.ResponseWriter, _ *http.Request) {
-	self.fileserverHits = 0
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Number of server hits has been reset"))
-}
-
 func main() {
 	const filepathRoot = "."
 	const port = "8080"
@@ -69,6 +32,7 @@ func main() {
 	mux.Handle("/app/*", config.middlewareMetricsInc(baseHandler))
 
 	mux.HandleFunc("GET /api/healthz", healthHandler)
+	mux.HandleFunc("POST /api/validate_chirp", validateChirpHandler)
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
 
 	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)
