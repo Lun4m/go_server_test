@@ -1,6 +1,7 @@
 package main
 
 import (
+	"chirpy/internal/database"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 
 type apiConfig struct {
 	fileserverHits int
+	chirpCount     int
 }
 
 func (self *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -48,13 +50,20 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 	w.Write([]byte("OK"))
 }
 
-func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
+func GetChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
+	chirps, err := db.GetChirps()
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+	respondWithJSON(w, 200, chirps)
+}
+
+func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 	type parameters struct {
 		Body string `json:"body"`
 	}
-
-	w.Header().Set("Access-Control-Allow-Methods", "POST")
-
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 
@@ -66,24 +75,38 @@ func validateChirpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len([]rune(params.Body)) > 139 {
-		data, err := json.Marshal(map[string]string{"error": "Chirp is too long"})
-		if err != nil {
-			log.Printf("Error marshalling JSON: %s", err)
-			w.WriteHeader(500)
-			return
-		}
-		w.WriteHeader(400)
-		w.Write(data)
+		respondWithError(w, 400, "Chirp is too long")
 	} else {
-		data, err := json.Marshal(map[string]string{"cleaned_body": cleanChirp(params.Body)})
+		chirp, err := db.CreateChirp(cleanChirp(params.Body))
 		if err != nil {
-			log.Printf("Error marshalling JSON: %s", err)
+			log.Println(err)
 			w.WriteHeader(500)
 			return
 		}
-		w.WriteHeader(200)
-		w.Write(data)
+		respondWithJSON(w, 201, chirp)
 	}
+}
+
+func respondWithError(w http.ResponseWriter, code int, msg string) {
+	data, err := json.Marshal(map[string]string{"error": msg})
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(code)
+	w.Write(data)
+}
+
+func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(code)
+	w.Write(data)
 }
 
 func cleanChirp(userInput string) string {

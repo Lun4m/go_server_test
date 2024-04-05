@@ -2,6 +2,7 @@ package main
 
 import (
 	// "fmt"
+	"chirpy/internal/database"
 	"log"
 	"net/http"
 )
@@ -23,6 +24,7 @@ func middlewareCors(next http.Handler) http.Handler {
 func main() {
 	const filepathRoot = "."
 	const port = "8080"
+	const databasePath = "database.json"
 
 	mux := http.NewServeMux()
 
@@ -31,8 +33,19 @@ func main() {
 
 	mux.Handle("/app/*", config.middlewareMetricsInc(baseHandler))
 
+	db, err := database.NewDB(databasePath)
+	if err != nil {
+		log.Println(err)
+	}
+
 	mux.HandleFunc("GET /api/healthz", healthHandler)
-	mux.HandleFunc("POST /api/validate_chirp", validateChirpHandler)
+	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
+		PostChirpHandler(w, r, db)
+	})
+	mux.HandleFunc("GET /api/chirps", func(w http.ResponseWriter, r *http.Request) {
+		GetChirpHandler(w, r, db)
+	})
+
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
 
 	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)
