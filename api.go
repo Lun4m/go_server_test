@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -57,7 +58,25 @@ func GetChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 		w.WriteHeader(500)
 		return
 	}
-	respondWithJSON(w, 200, chirps)
+
+	chirpID := r.PathValue("chirpID")
+	if chirpID == "" {
+		respondWithJSON(w, 200, chirps)
+		return
+	}
+
+	id, err := strconv.Atoi(chirpID)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if id > 0 && id <= len(chirps) {
+		respondWithJSON(w, 200, chirps[id-1])
+	} else {
+		respondWithError(w, 404, "Chirp does not exist")
+	}
+
 }
 
 func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
@@ -83,6 +102,7 @@ func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 			w.WriteHeader(500)
 			return
 		}
+
 		respondWithJSON(w, 201, chirp)
 	}
 }
