@@ -1,11 +1,14 @@
 package main
 
 import (
-	// "fmt"
-	"chirpy/internal/database"
 	"flag"
 	"log"
 	"net/http"
+	"os"
+
+	"github.com/joho/godotenv"
+
+	"chirpy/internal/database"
 )
 
 func middlewareCors(next http.Handler) http.Handler {
@@ -29,6 +32,9 @@ func main() {
 
 	dbg := flag.Bool("debug", false, "Enable debug mode")
 	flag.Parse()
+
+	godotenv.Load()
+	jwtSecret := os.Getenv("JWT_SECRET")
 
 	mux := http.NewServeMux()
 
@@ -62,9 +68,12 @@ func main() {
 	mux.HandleFunc("GET /api/users/{userID}", func(w http.ResponseWriter, r *http.Request) {
 		GetUserHandler(w, r, db)
 	})
+	mux.HandleFunc("PUT /api/users", func(w http.ResponseWriter, r *http.Request) {
+		PutUserHandler(w, r, db, jwtSecret)
+	})
 
 	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
-		LoginHandler(w, r, db)
+		LoginHandler(w, r, db, jwtSecret)
 	})
 
 	mux.HandleFunc("GET /api/reset", config.resetHandler)

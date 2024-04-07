@@ -89,6 +89,22 @@ func (self *DB) CreateUser(email string, pw []byte) (User, error) {
 	return user, nil
 }
 
+func (self *DB) UpdateUser(id int, email string, pw []byte) (User, error) {
+	db, err := self.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+	user := User{Id: id, Email: email, Password: pw}
+	db.Users[id] = user
+
+	err = self.writeDB(db)
+	if err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
 func (self *DB) GetUsers() ([]User, error) {
 	db, err := self.loadDB()
 	if err != nil {
