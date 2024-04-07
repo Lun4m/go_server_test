@@ -1,1 +1,1 @@
-go build && ./chirpy
+go build && ./chirpy --debug

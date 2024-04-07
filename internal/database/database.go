@@ -22,13 +22,13 @@ type Chirp struct {
 	Body string `json:"body"`
 }
 
-func NewDB(path string) (*DB, error) {
-	if _, err := os.ReadFile(path); errors.Is(err, os.ErrNotExist) {
 type User struct {
 	Id    int    `json:"id"`
 	Email string `json:"email"`
 }
 
+func NewDB(path string, dbg bool) (*DB, error) {
+	if _, err := os.ReadFile(path); dbg || errors.Is(err, os.ErrNotExist) {
 		os.Create(path)
 	}
 	return &DB{path: path, mu: &sync.RWMutex{}}, nil

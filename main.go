@@ -3,6 +3,7 @@ package main
 import (
 	// "fmt"
 	"chirpy/internal/database"
+	"flag"
 	"log"
 	"net/http"
 )
@@ -26,6 +27,9 @@ func main() {
 	const port = "8080"
 	const databasePath = "database.json"
 
+	dbg := flag.Bool("debug", false, "Enable debug mode")
+	flag.Parse()
+
 	mux := http.NewServeMux()
 
 	config := apiConfig{}
@@ -33,7 +37,7 @@ func main() {
 
 	mux.Handle("/app/*", config.middlewareMetricsInc(baseHandler))
 
-	db, err := database.NewDB(databasePath)
+	db, err := database.NewDB(databasePath, *dbg)
 	if err != nil {
 		log.Println(err)
 	}
