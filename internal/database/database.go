@@ -23,8 +23,9 @@ type Chirp struct {
 }
 
 type User struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
+	Id       int    `json:"id"`
+	Email    string `json:"email"`
+	Password []byte `json:"password"`
 }
 
 func NewDB(path string, dbg bool) (*DB, error) {
@@ -65,14 +66,20 @@ func (self *DB) GetChirps() ([]Chirp, error) {
 	return chirps, nil
 }
 
-func (self *DB) CreateUser(email string) (User, error) {
+func (self *DB) CreateUser(email string, pw []byte) (User, error) {
 	db, err := self.loadDB()
 	if err != nil {
 		return User{}, err
 	}
+	for _, u := range db.Users {
+		if u.Email == email {
+			return User{}, errors.New("User with the given email already exists")
+		}
+	}
 
 	id := len(db.Users) + 1
-	user := User{Id: id, Email: email}
+
+	user := User{Id: id, Email: email, Password: pw}
 	db.Users[id] = user
 
 	err = self.writeDB(db)

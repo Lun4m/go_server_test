@@ -4,6 +4,7 @@ import (
 	"chirpy/internal/database"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
 	"strconv"
@@ -13,6 +14,11 @@ import (
 type apiConfig struct {
 	fileserverHits int
 	chirpCount     int
+}
+
+type userOutJSON struct {
+	Id    int    `json:"id"`
+	Email string `json:"email"`
 }
 
 func (self *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -134,7 +140,8 @@ func GetUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 
 func PostUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 	type parameters struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
@@ -146,13 +153,65 @@ func PostUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 		return
 	}
 
-	user, err := db.CreateUser(params.Email)
+	hashPW, err := bcrypt.GenerateFromPassword([]byte(params.Password), 5)
+	if err != nil {
+		log.Printf("Error hashing parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	user, err := db.CreateUser(params.Email, hashPW)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(500)
 		return
 	}
-	respondWithJSON(w, 201, user)
+
+	respondWithJSON(w, 201, userOutJSON{user.Id, user.Email})
+}
+
+func LoginHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
+	type parameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	users, err := db.GetUsers()
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+
+	if err = decoder.Decode(&params); err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	id := -1
+	for i, u := range users {
+		if u.Email == params.Email {
+			id = i
+			break
+		}
+	}
+
+	if id < 0 {
+		respondWithError(w, 404, "User not found")
+		return
+	}
+
+	user := users[id]
+	err = bcrypt.CompareHashAndPassword(user.Password, []byte(params.Password))
+	if err != nil {
+		respondWithError(w, 401, "Wrong password")
+	} else {
+		respondWithJSON(w, 200, userOutJSON{user.Id, user.Email})
+	}
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {

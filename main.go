@@ -63,6 +63,10 @@ func main() {
 		GetUserHandler(w, r, db)
 	})
 
+	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
+		LoginHandler(w, r, db)
+	})
+
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
 
 	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)
