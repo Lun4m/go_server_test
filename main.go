@@ -49,6 +49,16 @@ func main() {
 		GetChirpHandler(w, r, db)
 	})
 
+	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
+		PostUserHandler(w, r, db)
+	})
+	mux.HandleFunc("GET /api/users", func(w http.ResponseWriter, r *http.Request) {
+		GetUserHandler(w, r, db)
+	})
+	mux.HandleFunc("GET /api/users/{userID}", func(w http.ResponseWriter, r *http.Request) {
+		GetUserHandler(w, r, db)
+	})
+
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
 
 	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)

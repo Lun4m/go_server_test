@@ -76,7 +76,6 @@ func GetChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 	} else {
 		respondWithError(w, 404, "Chirp does not exist")
 	}
-
 }
 
 func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
@@ -102,9 +101,58 @@ func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 			w.WriteHeader(500)
 			return
 		}
-
 		respondWithJSON(w, 201, chirp)
 	}
+}
+
+func GetUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
+	users, err := db.GetUsers()
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	userID := r.PathValue("userID")
+	if userID == "" {
+		respondWithJSON(w, 200, users)
+		return
+	}
+
+	id, err := strconv.Atoi(userID)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if id > 0 && id <= len(users) {
+		respondWithJSON(w, 200, users[id-1])
+	} else {
+		respondWithError(w, 404, "User does not exist")
+	}
+}
+
+func PostUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
+	type parameters struct {
+		Email string `json:"email"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	user, err := db.CreateUser(params.Email)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+	respondWithJSON(w, 201, user)
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {

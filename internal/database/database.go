@@ -14,6 +14,7 @@ type DB struct {
 
 type DBStructure struct {
 	Chirps map[int]Chirp `json:"chirps"`
+	Users  map[int]User  `json:"users"`
 }
 
 type Chirp struct {
@@ -23,6 +24,11 @@ type Chirp struct {
 
 func NewDB(path string) (*DB, error) {
 	if _, err := os.ReadFile(path); errors.Is(err, os.ErrNotExist) {
+type User struct {
+	Id    int    `json:"id"`
+	Email string `json:"email"`
+}
+
 		os.Create(path)
 	}
 	return &DB{path: path, mu: &sync.RWMutex{}}, nil
@@ -59,8 +65,42 @@ func (self *DB) GetChirps() ([]Chirp, error) {
 	return chirps, nil
 }
 
+func (self *DB) CreateUser(email string) (User, error) {
+	db, err := self.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+
+	id := len(db.Users) + 1
+	user := User{Id: id, Email: email}
+	db.Users[id] = user
+
+	err = self.writeDB(db)
+	if err != nil {
+		return User{}, err
+	}
+	return user, nil
+}
+
+func (self *DB) GetUsers() ([]User, error) {
+	db, err := self.loadDB()
+	if err != nil {
+		return nil, err
+	}
+
+	users := make([]User, len(db.Users))
+	for i := 1; i <= len(db.Users); i++ {
+		users[i-1] = db.Users[i]
+	}
+
+	return users, nil
+}
+
 func (self *DB) loadDB() (DBStructure, error) {
-	db := DBStructure{Chirps: make(map[int]Chirp)}
+	db := DBStructure{
+		Chirps: make(map[int]Chirp),
+		Users:  make(map[int]User),
+	}
 
 	self.mu.RLock()
 	defer self.mu.RUnlock()
