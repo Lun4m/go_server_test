@@ -3,8 +3,10 @@ package database
 import (
 	"encoding/json"
 	"errors"
+	_ "log"
 	"os"
 	"sync"
+	"time"
 )
 
 type DB struct {
@@ -13,8 +15,9 @@ type DB struct {
 }
 
 type DBStructure struct {
-	Chirps map[int]Chirp `json:"chirps"`
-	Users  map[int]User  `json:"users"`
+	Chirps        map[int]Chirp        `json:"chirps"`
+	Users         map[int]User         `json:"users"`
+	RevokedTokens map[string]time.Time `json:"revoked_tokens"`
 }
 
 type Chirp struct {
@@ -119,10 +122,34 @@ func (self *DB) GetUsers() ([]User, error) {
 	return users, nil
 }
 
+func (self *DB) RevokeToken(token string) error {
+	db, err := self.loadDB()
+	if err != nil {
+		return err
+	}
+
+	db.RevokedTokens[token] = time.Now()
+
+	err = self.writeDB(db)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (self *DB) GetRevokedTokens() (map[string]time.Time, error) {
+	db, err := self.loadDB()
+	if err != nil {
+		return nil, err
+	}
+	return db.RevokedTokens, nil
+}
+
 func (self *DB) loadDB() (DBStructure, error) {
 	db := DBStructure{
-		Chirps: make(map[int]Chirp),
-		Users:  make(map[int]User),
+		Chirps:        make(map[int]Chirp),
+		Users:         make(map[int]User),
+		RevokedTokens: make(map[string]time.Time),
 	}
 
 	self.mu.RLock()

@@ -75,9 +75,14 @@ func main() {
 	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
 		LoginHandler(w, r, db, jwtSecret)
 	})
+	mux.HandleFunc("POST /api/refresh", func(w http.ResponseWriter, r *http.Request) {
+		PostRefreshHandler(w, r, db, jwtSecret)
+	})
+	mux.HandleFunc("POST /api/revoke", func(w http.ResponseWriter, r *http.Request) {
+		PostRevokeHandler(w, r, db, jwtSecret)
+	})
 
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
-
 	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)
 
 	corsMux := middlewareCors(mux)

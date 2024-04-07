@@ -15,20 +15,19 @@ import (
 	"chirpy/internal/database"
 )
 
+const accTokenDur = time.Hour           // 1 hour
+const refTokenDur = 24 * 60 * time.Hour // 60 days
+
 type apiConfig struct {
 	fileserverHits int
 	chirpCount     int
 }
 
 type userOutJSON struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
-}
-
-type userWithToken struct {
-	Id    int    `json:"id"`
-	Email string `json:"email"`
-	Token string `json:"token"`
+	Id           int    `json:"id,omitempty"`
+	Email        string `json:"email,omitempty"`
+	AccessToken  string `json:"token,omitempty"`
+	RefreshToken string `json:"refresh_token,omitempty"`
 }
 
 func (self *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -177,7 +176,7 @@ func PostUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 		return
 	}
 
-	respondWithJSON(w, 201, userOutJSON{user.Id, user.Email})
+	respondWithJSON(w, 201, userOutJSON{Id: user.Id, Email: user.Email})
 }
 
 func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
@@ -188,6 +187,7 @@ func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key
 
 	authStr := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authStr, "Bearer ") {
+		respondWithError(w, 401, "Invalid token")
 		return
 	}
 
@@ -199,6 +199,16 @@ func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key
 
 	if err != nil {
 		log.Printf("Invalid token: %v\n", err)
+		respondWithError(w, 401, "Invalid token")
+		return
+	}
+
+	issuer, err := token.Claims.GetIssuer()
+	if err != nil {
+		respondWithError(w, 404, "Issuer not found")
+		return
+	}
+	if issuer != "chirpy-access" {
 		respondWithError(w, 401, "Invalid token")
 		return
 	}
@@ -236,8 +246,105 @@ func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key
 	if err != nil {
 		respondWithError(w, 500, fmt.Sprint(err))
 	} else {
-		respondWithJSON(w, 200, userOutJSON{user.Id, user.Email})
+		respondWithJSON(w, 200, userOutJSON{Id: user.Id, Email: user.Email})
 	}
+}
+
+func PostRefreshHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
+	authStr := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authStr, "Bearer ") {
+		respondWithError(w, 401, "Invalid token")
+		return
+	}
+
+	// Strip "Bearer "
+	tokenStr := authStr[7:]
+	token, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
+		return []byte(key), nil
+	})
+
+	if err != nil {
+		log.Printf("Invalid token: %v\n", err)
+		respondWithError(w, 401, "Invalid token")
+		return
+	}
+
+	issuer, err := token.Claims.GetIssuer()
+	if err != nil {
+		respondWithError(w, 404, "Issuer not found")
+		return
+	}
+	if issuer != "chirpy-refresh" {
+		respondWithError(w, 401, "Invalid token")
+	}
+
+	revokedTokens, err := db.GetRevokedTokens()
+	if err != nil {
+		respondWithError(w, 500, "Unavailable database")
+		return
+	}
+	if _, ok := revokedTokens[tokenStr]; ok {
+		respondWithError(w, 401, "Token was revoked")
+		return
+	}
+
+	userID, err := token.Claims.GetSubject()
+	if err != nil {
+		respondWithError(w, 404, "ID not found")
+		return
+	}
+
+	id, err := strconv.Atoi(userID)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	accessToken, err := getToken(id, accTokenDur, "chirpy-access", key)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+	respondWithJSON(w, 200, userOutJSON{AccessToken: accessToken})
+
+}
+
+func PostRevokeHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
+	authStr := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authStr, "Bearer ") {
+		respondWithError(w, 401, "Invalid token")
+		return
+	}
+
+	// Strip "Bearer "
+	tokenStr := authStr[7:]
+	token, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
+		return []byte(key), nil
+	})
+
+	if err != nil {
+		log.Printf("Invalid token: %v\n", err)
+		respondWithError(w, 401, "Invalid token")
+		return
+	}
+
+	issuer, err := token.Claims.GetIssuer()
+	if err != nil {
+		respondWithError(w, 404, "Issuer not found")
+		return
+	}
+	if issuer != "chirpy-refresh" {
+		respondWithError(w, 401, "Invalid token")
+	}
+
+	err = db.RevokeToken(tokenStr)
+	if err != nil {
+		respondWithError(w, 500, "Database offline")
+		return
+	}
+	respondWithJSON(w, 200, "Token revoked")
 }
 
 func LoginHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
@@ -266,47 +373,49 @@ func LoginHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key s
 	id := -1
 	for i, u := range users {
 		if u.Email == params.Email {
-			id = i
+			id = i + 1
 			break
 		}
 	}
 
-	if id < 0 {
+	if id < 1 {
 		respondWithError(w, 404, "User not found")
 		return
 	}
 
-	// If expires_in_seconds not provided default to 24h
-	secondsDay := 24 * 3600
-	if params.ExpiresInSeconds == 0 || params.ExpiresInSeconds > secondsDay {
-		params.ExpiresInSeconds = secondsDay
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
-		jwt.RegisteredClaims{
-			Issuer:   "chirpy",
-			IssuedAt: jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(
-				time.Duration(params.ExpiresInSeconds) * time.Second),
-			),
-			Subject: fmt.Sprint(id + 1),
-		})
-
-	strToken, err := token.SignedString([]byte(key))
-
+	accessToken, err := getToken(id, accTokenDur, "chirpy-access", key)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(500)
 		return
 	}
 
-	user := users[id]
+	refreshToken, err := getToken(id, refTokenDur, "chirpy-refresh", key)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	user := users[id-1]
 	err = bcrypt.CompareHashAndPassword(user.Password, []byte(params.Password))
 	if err != nil {
 		respondWithError(w, 401, "Wrong password")
 	} else {
-		respondWithJSON(w, 200, userWithToken{user.Id, user.Email, strToken})
+		respondWithJSON(w, 200, userOutJSON{
+			user.Id, user.Email, accessToken, refreshToken})
 	}
+}
+
+func getToken(id int, duration time.Duration, issuer, key string) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256,
+		jwt.RegisteredClaims{
+			Issuer:    issuer,
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(duration)),
+			Subject:   fmt.Sprint(id),
+		})
+	return token.SignedString([]byte(key))
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
