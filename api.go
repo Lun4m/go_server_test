@@ -127,6 +127,46 @@ func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB, k
 	}
 }
 
+func DeleteChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
+	authorID, err := checkAuthentication(r, key)
+	if err != nil {
+		log.Println(err)
+		respondWithError(w, 401, fmt.Sprint(err))
+	}
+
+	chirps, err := db.GetChirps()
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(500)
+		return
+	}
+
+	chirpID := r.PathValue("chirpID")
+	if chirpID == "" {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	id, err := strconv.Atoi(chirpID)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if id < 1 && id > len(chirps) {
+		respondWithError(w, 404, "Chirp does not exist")
+		return
+	}
+
+	chirpToDelete := chirps[id-1]
+	if chirpToDelete.AuthorID == authorID {
+		db.DeleteChirp(id - 1)
+		respondWithJSON(w, 200, "Chirp successfully deleted")
+	} else {
+		respondWithError(w, 403, "Forbidden operation")
+	}
+}
+
 func GetUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 	users, err := db.GetUsers()
 	if err != nil {
