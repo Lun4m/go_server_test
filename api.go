@@ -75,6 +75,12 @@ func GetChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 		respondWithError(w, 500, err.Error())
 		return
 	}
+
+	sortOrder := r.URL.Query().Get("sort")
+	if sortOrder == "desc" {
+		slices.Reverse(chirps)
+	}
+
 	authorID := r.URL.Query().Get("author_id")
 	if authorID == "" {
 		respondWithJSON(w, 200, chirps)
