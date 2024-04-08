@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+var (
+	DBLoadErr         = errors.New("Could not load database")
+	DBWriteErr        = errors.New("Could not write database")
+	UserNotFound      = errors.New("Could not find user ID")
+	UserAlreadyExists = errors.New("User with the given email already exists")
+)
+
 type DB struct {
 	path string
 	mu   *sync.RWMutex
@@ -27,9 +34,10 @@ type Chirp struct {
 }
 
 type User struct {
-	Id       int    `json:"id"`
-	Email    string `json:"email"`
-	Password []byte `json:"password"`
+	Id          int    `json:"id"`
+	Email       string `json:"email"`
+	Password    []byte `json:"password"`
+	IsChirpyRed bool   `json:"is_chirpy_red"`
 }
 
 func NewDB(path string, dbg bool) (*DB, error) {
@@ -92,7 +100,7 @@ func (self *DB) CreateUser(email string, pw []byte) (User, error) {
 	}
 	for _, u := range db.Users {
 		if u.Email == email {
-			return User{}, errors.New("User with the given email already exists")
+			return User{}, UserAlreadyExists
 		}
 	}
 
@@ -114,7 +122,12 @@ func (self *DB) UpdateUser(id int, email string, pw []byte) (User, error) {
 		return User{}, err
 	}
 
-	user := User{Id: id, Email: email, Password: pw}
+	user := User{
+		Id:          id,
+		Email:       email,
+		Password:    pw,
+		IsChirpyRed: db.Users[id].IsChirpyRed,
+	}
 	db.Users[id] = user
 
 	err = self.writeDB(db)
@@ -122,6 +135,26 @@ func (self *DB) UpdateUser(id int, email string, pw []byte) (User, error) {
 		return User{}, err
 	}
 	return user, nil
+}
+
+func (self *DB) UpgradeUser(id int) error {
+	db, err := self.loadDB()
+	if err != nil {
+		return DBLoadErr
+	}
+
+	// We are sure id exists
+	if user, ok := db.Users[id]; ok {
+		user.IsChirpyRed = true
+		db.Users[id] = user
+
+		err = self.writeDB(db)
+		if err != nil {
+			return DBWriteErr
+		}
+		return nil
+	}
+	return UserNotFound
 }
 
 func (self *DB) GetUsers() ([]User, error) {

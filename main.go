@@ -89,6 +89,9 @@ func main() {
 	})
 	mux.HandleFunc("GET /api/healthz", healthHandler)
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
+	mux.HandleFunc("POST /api/polka/webhooks", func(w http.ResponseWriter, r *http.Request) {
+		PostPolkaWeebhookHandler(w, r, db)
+	})
 
 	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)
 

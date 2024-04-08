@@ -29,6 +29,7 @@ type userOutJSON struct {
 	Email        string `json:"email,omitempty"`
 	AccessToken  string `json:"token,omitempty"`
 	RefreshToken string `json:"refresh_token,omitempty"`
+	IsChirpyRed  bool   `json:"is_chirpy_red"`
 }
 
 func (self *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
@@ -223,7 +224,9 @@ func PostUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 		return
 	}
 
-	respondWithJSON(w, 201, userOutJSON{Id: user.Id, Email: user.Email})
+	respondWithJSON(w, 201, userOutJSON{
+		Id: user.Id, Email: user.Email, IsChirpyRed: user.IsChirpyRed},
+	)
 }
 
 func checkAuthentication(r *http.Request, key string) (int, error) {
@@ -289,7 +292,9 @@ func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key
 	if err != nil {
 		respondWithError(w, 500, fmt.Sprint(err))
 	} else {
-		respondWithJSON(w, 200, userOutJSON{Id: user.Id, Email: user.Email})
+		respondWithJSON(w, 200, userOutJSON{
+			Id: user.Id, Email: user.Email, IsChirpyRed: user.IsChirpyRed},
+		)
 	}
 }
 
@@ -446,7 +451,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key s
 		respondWithError(w, 401, "Wrong password")
 	} else {
 		respondWithJSON(w, 200, userOutJSON{
-			user.Id, user.Email, accessToken, refreshToken})
+			user.Id, user.Email, accessToken, refreshToken, user.IsChirpyRed})
 	}
 }
 
@@ -459,6 +464,40 @@ func getToken(id int, duration time.Duration, issuer, key string) (string, error
 			Subject:   fmt.Sprint(id),
 		})
 	return token.SignedString([]byte(key))
+}
+
+func PostPolkaWeebhookHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
+	type parameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserID int `json:"user_id"`
+		} `json:"data"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	if params.Event != "user.upgraded" {
+		respondWithJSON(w, 200, "")
+		return
+	}
+
+	err = db.UpgradeUser(params.Data.UserID)
+	if errors.Is(err, database.UserNotFound) {
+		respondWithError(w, 404, "User not found")
+		return
+	}
+	if err != nil {
+		respondWithError(w, 500, "")
+		return
+	}
+	respondWithJSON(w, 200, "")
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
