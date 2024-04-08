@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -71,17 +72,37 @@ func healthHandler(w http.ResponseWriter, _ *http.Request) {
 func GetChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 	chirps, err := db.GetChirps()
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
-
-	chirpID := r.PathValue("chirpID")
-	if chirpID == "" {
+	authorID := r.URL.Query().Get("author_id")
+	if authorID == "" {
 		respondWithJSON(w, 200, chirps)
 		return
 	}
 
+	id, err := strconv.Atoi(authorID)
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	respondWithJSON(w, 200, slices.DeleteFunc(
+		chirps,
+		func(c database.Chirp) bool {
+			return c.AuthorID != id
+		},
+	))
+}
+
+func GetChirpByIDHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
+	chirps, err := db.GetChirps()
+	if err != nil {
+		respondWithError(w, 500, err.Error())
+		return
+	}
+
+	chirpID := r.PathValue("chirpID")
 	id, err := strconv.Atoi(chirpID)
 	if err != nil {
 		log.Println(err)
@@ -104,14 +125,12 @@ func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB, k
 
 	err := decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, fmt.Sprintf("Error decoding parameters: %s", err))
 		return
 	}
 
 	authorID, err := checkAuthentication(r, key)
 	if err != nil {
-		log.Println(err)
 		respondWithError(w, 401, fmt.Sprint(err))
 	}
 
@@ -120,8 +139,7 @@ func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB, k
 	} else {
 		chirp, err := db.CreateChirp(cleanChirp(params.Body), authorID)
 		if err != nil {
-			log.Println(err)
-			w.WriteHeader(500)
+			respondWithError(w, 500, err.Error())
 			return
 		}
 		respondWithJSON(w, 201, chirp)
@@ -131,14 +149,12 @@ func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB, k
 func DeleteChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
 	authorID, err := checkAuthentication(r, key)
 	if err != nil {
-		log.Println(err)
 		respondWithError(w, 401, fmt.Sprint(err))
 	}
 
 	chirps, err := db.GetChirps()
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -150,7 +166,7 @@ func DeleteChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB,
 
 	id, err := strconv.Atoi(chirpID)
 	if err != nil {
-		log.Println(err)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -171,8 +187,7 @@ func DeleteChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB,
 func GetUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 	users, err := db.GetUsers()
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -184,7 +199,7 @@ func GetUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 
 	id, err := strconv.Atoi(userID)
 	if err != nil {
-		log.Println(err)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -205,22 +220,19 @@ func PostUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 
 	err := decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
 	hashPW, err := bcrypt.GenerateFromPassword([]byte(params.Password), 5)
 	if err != nil {
-		log.Printf("Error hashing parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
 	user, err := db.CreateUser(params.Email, hashPW)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -241,12 +253,12 @@ func checkAuthentication(r *http.Request, key string) (int, error) {
 		return []byte(key), nil
 	})
 	if err != nil {
-		return -1, errors.New(fmt.Sprintf("Invalid token: %v\n", err))
+		return -1, err
 	}
 
 	issuer, err := token.Claims.GetIssuer()
 	if err != nil {
-		return -1, errors.New("Issuer not found")
+		return -1, err
 	}
 	if issuer != "chirpy-access" {
 		return -1, errors.New("Invalid token")
@@ -254,9 +266,8 @@ func checkAuthentication(r *http.Request, key string) (int, error) {
 
 	userID, err := token.Claims.GetSubject()
 	if err != nil {
-		return -1, errors.New("ID not found")
+		return -1, err
 	}
-
 	return strconv.Atoi(userID)
 }
 
@@ -268,29 +279,26 @@ func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key
 
 	id, err := checkAuthentication(r, key)
 	if err != nil {
-		log.Println(err)
-		respondWithError(w, 401, fmt.Sprint(err))
+		respondWithError(w, 401, err.Error())
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 
 	if err = decoder.Decode(&params); err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
 	hashPW, err := bcrypt.GenerateFromPassword([]byte(params.Password), 5)
 	if err != nil {
-		log.Printf("Error hashing parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
 	user, err := db.UpdateUser(id, params.Email, hashPW)
 	if err != nil {
-		respondWithError(w, 500, fmt.Sprint(err))
+		respondWithError(w, 500, err.Error())
 	} else {
 		respondWithJSON(w, 200, userOutJSON{
 			Id: user.Id, Email: user.Email, IsChirpyRed: user.IsChirpyRed},
@@ -344,15 +352,13 @@ func PostRefreshHandler(w http.ResponseWriter, r *http.Request, db *database.DB,
 
 	id, err := strconv.Atoi(userID)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
 	accessToken, err := getToken(id, accTokenDur, "chirpy-access", key)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 	respondWithJSON(w, 200, userOutJSON{AccessToken: accessToken})
@@ -404,8 +410,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key s
 
 	users, err := db.GetUsers()
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -413,8 +418,7 @@ func LoginHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key s
 	params := parameters{}
 
 	if err = decoder.Decode(&params); err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -433,15 +437,13 @@ func LoginHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key s
 
 	accessToken, err := getToken(id, accTokenDur, "chirpy-access", key)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
 	refreshToken, err := getToken(id, refTokenDur, "chirpy-refresh", key)
 	if err != nil {
-		log.Println(err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -489,8 +491,7 @@ func PostPolkaWeebhookHandler(w http.ResponseWriter, r *http.Request, db *databa
 	params := parameters{}
 
 	if err := decoder.Decode(&params); err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, err.Error())
 		return
 	}
 
@@ -512,12 +513,8 @@ func PostPolkaWeebhookHandler(w http.ResponseWriter, r *http.Request, db *databa
 }
 
 func respondWithError(w http.ResponseWriter, code int, msg string) {
-	data, err := json.Marshal(map[string]string{"error": msg})
-	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
-		return
-	}
+	data, _ := json.Marshal(map[string]string{"error": msg})
+	log.Println(msg)
 	w.WriteHeader(code)
 	w.Write(data)
 }
@@ -525,8 +522,7 @@ func respondWithError(w http.ResponseWriter, code int, msg string) {
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	data, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, 500, fmt.Sprintf("Error marshalling JSON: %s", err))
 		return
 	}
 	w.WriteHeader(code)
