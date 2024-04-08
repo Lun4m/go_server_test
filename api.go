@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -93,7 +94,7 @@ func GetChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 	}
 }
 
-func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
+func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
 	type parameters struct {
 		Body string `json:"body"`
 	}
@@ -107,10 +108,16 @@ func PostChirpHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 		return
 	}
 
+	authorID, err := checkAuthentication(r, key)
+	if err != nil {
+		log.Println(err)
+		respondWithError(w, 401, fmt.Sprint(err))
+	}
+
 	if len([]rune(params.Body)) > 139 {
 		respondWithError(w, 400, "Chirp is too long")
 	} else {
-		chirp, err := db.CreateChirp(cleanChirp(params.Body))
+		chirp, err := db.CreateChirp(cleanChirp(params.Body), authorID)
 		if err != nil {
 			log.Println(err)
 			w.WriteHeader(500)
@@ -179,16 +186,10 @@ func PostUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
 	respondWithJSON(w, 201, userOutJSON{Id: user.Id, Email: user.Email})
 }
 
-func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
-	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-
+func checkAuthentication(r *http.Request, key string) (int, error) {
 	authStr := r.Header.Get("Authorization")
 	if !strings.HasPrefix(authStr, "Bearer ") {
-		respondWithError(w, 401, "Invalid token")
-		return
+		return -1, errors.New("Invalid token")
 	}
 
 	// Strip "Bearer "
@@ -196,34 +197,36 @@ func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key
 	token, err := jwt.ParseWithClaims(tokenStr, &jwt.RegisteredClaims{}, func(t *jwt.Token) (interface{}, error) {
 		return []byte(key), nil
 	})
-
 	if err != nil {
-		log.Printf("Invalid token: %v\n", err)
-		respondWithError(w, 401, "Invalid token")
-		return
+		return -1, errors.New(fmt.Sprintf("Invalid token: %v\n", err))
 	}
 
 	issuer, err := token.Claims.GetIssuer()
 	if err != nil {
-		respondWithError(w, 404, "Issuer not found")
-		return
+		return -1, errors.New("Issuer not found")
 	}
 	if issuer != "chirpy-access" {
-		respondWithError(w, 401, "Invalid token")
-		return
+		return -1, errors.New("Invalid token")
 	}
 
 	userID, err := token.Claims.GetSubject()
 	if err != nil {
-		respondWithError(w, 404, "ID not found")
-		return
+		return -1, errors.New("ID not found")
 	}
 
-	id, err := strconv.Atoi(userID)
+	return strconv.Atoi(userID)
+}
+
+func PutUserHandler(w http.ResponseWriter, r *http.Request, db *database.DB, key string) {
+	type parameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	id, err := checkAuthentication(r, key)
 	if err != nil {
 		log.Println(err)
-		w.WriteHeader(500)
-		return
+		respondWithError(w, 401, fmt.Sprint(err))
 	}
 
 	decoder := json.NewDecoder(r.Body)

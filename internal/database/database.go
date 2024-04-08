@@ -21,8 +21,9 @@ type DBStructure struct {
 }
 
 type Chirp struct {
-	Id   int    `json:"id"`
-	Body string `json:"body"`
+	Id       int    `json:"id"`
+	Body     string `json:"body"`
+	AuthorID int    `json:"author_id"`
 }
 
 type User struct {
@@ -38,14 +39,14 @@ func NewDB(path string, dbg bool) (*DB, error) {
 	return &DB{path: path, mu: &sync.RWMutex{}}, nil
 }
 
-func (self *DB) CreateChirp(body string) (Chirp, error) {
+func (self *DB) CreateChirp(body string, authorID int) (Chirp, error) {
 	db, err := self.loadDB()
 	if err != nil {
 		return Chirp{}, err
 	}
 
 	id := len(db.Chirps) + 1
-	chirp := Chirp{Id: id, Body: body}
+	chirp := Chirp{Id: id, Body: body, AuthorID: authorID}
 	db.Chirps[id] = chirp
 
 	err = self.writeDB(db)

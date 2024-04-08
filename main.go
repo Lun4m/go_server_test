@@ -51,7 +51,7 @@ func main() {
 
 	// Chirps endpoint
 	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
-		PostChirpHandler(w, r, db)
+		PostChirpHandler(w, r, db, jwtSecret)
 	})
 	mux.HandleFunc("GET /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 		GetChirpHandler(w, r, db)
