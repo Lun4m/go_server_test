@@ -466,18 +466,29 @@ func getToken(id int, duration time.Duration, issuer, key string) (string, error
 	return token.SignedString([]byte(key))
 }
 
-func PostPolkaWeebhookHandler(w http.ResponseWriter, r *http.Request, db *database.DB) {
+func PostPolkaWeebhookHandler(w http.ResponseWriter, r *http.Request, db *database.DB, APIkey string) {
 	type parameters struct {
 		Event string `json:"event"`
 		Data  struct {
 			UserID int `json:"user_id"`
 		} `json:"data"`
 	}
+
+	authStr := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authStr, "ApiKey ") {
+		respondWithError(w, 401, "Wrong API key")
+		return
+	}
+
+	if authStr[7:] != APIkey {
+		respondWithError(w, 401, "Wrong API key")
+		return
+	}
+
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
 
-	err := decoder.Decode(&params)
-	if err != nil {
+	if err := decoder.Decode(&params); err != nil {
 		log.Printf("Error decoding parameters: %s", err)
 		w.WriteHeader(500)
 		return
@@ -488,7 +499,7 @@ func PostPolkaWeebhookHandler(w http.ResponseWriter, r *http.Request, db *databa
 		return
 	}
 
-	err = db.UpgradeUser(params.Data.UserID)
+	err := db.UpgradeUser(params.Data.UserID)
 	if errors.Is(err, database.UserNotFound) {
 		respondWithError(w, 404, "User not found")
 		return

@@ -37,6 +37,7 @@ func main() {
 
 	godotenv.Load()
 	jwtSecret := os.Getenv("JWT_SECRET")
+	polkaAPIKey := os.Getenv("POLKA_API_KEY")
 
 	db, err := database.NewDB(databasePath, *dbg)
 	if err != nil {
@@ -90,7 +91,7 @@ func main() {
 	mux.HandleFunc("GET /api/healthz", healthHandler)
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
 	mux.HandleFunc("POST /api/polka/webhooks", func(w http.ResponseWriter, r *http.Request) {
-		PostPolkaWeebhookHandler(w, r, db)
+		PostPolkaWeebhookHandler(w, r, db, polkaAPIKey)
 	})
 
 	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)
