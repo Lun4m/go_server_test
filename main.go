@@ -30,25 +30,26 @@ func main() {
 	const port = "8080"
 	const databasePath = "database.json"
 
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	dbg := flag.Bool("debug", false, "Enable debug mode")
 	flag.Parse()
 
 	godotenv.Load()
 	jwtSecret := os.Getenv("JWT_SECRET")
 
-	mux := http.NewServeMux()
-
-	config := apiConfig{}
-	baseHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
-
-	mux.Handle("/app/*", config.middlewareMetricsInc(baseHandler))
-
 	db, err := database.NewDB(databasePath, *dbg)
 	if err != nil {
 		log.Println(err)
 	}
 
-	mux.HandleFunc("GET /api/healthz", healthHandler)
+	config := apiConfig{}
+	baseHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
+
+	mux := http.NewServeMux()
+	mux.Handle("/app/*", config.middlewareMetricsInc(baseHandler))
+
+	// Chirps endpoint
 	mux.HandleFunc("POST /api/chirps", func(w http.ResponseWriter, r *http.Request) {
 		PostChirpHandler(w, r, db)
 	})
@@ -59,6 +60,7 @@ func main() {
 		GetChirpHandler(w, r, db)
 	})
 
+	// Users endpoint
 	mux.HandleFunc("POST /api/users", func(w http.ResponseWriter, r *http.Request) {
 		PostUserHandler(w, r, db)
 	})
@@ -72,6 +74,7 @@ func main() {
 		PutUserHandler(w, r, db, jwtSecret)
 	})
 
+	// Other api endpoints
 	mux.HandleFunc("POST /api/login", func(w http.ResponseWriter, r *http.Request) {
 		LoginHandler(w, r, db, jwtSecret)
 	})
@@ -81,8 +84,9 @@ func main() {
 	mux.HandleFunc("POST /api/revoke", func(w http.ResponseWriter, r *http.Request) {
 		PostRevokeHandler(w, r, db, jwtSecret)
 	})
-
+	mux.HandleFunc("GET /api/healthz", healthHandler)
 	mux.HandleFunc("GET /api/reset", config.resetHandler)
+
 	mux.HandleFunc("GET /admin/metrics", config.metricsHandler)
 
 	corsMux := middlewareCors(mux)
